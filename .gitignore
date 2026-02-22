@@ -1,0 +1,17 @@
+# Compiled MOF files
+**/localhost.mof
+**/*.mof
+
+# Package output
+output/
+
+# PowerShell module cache
+**/PSModulePath/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
