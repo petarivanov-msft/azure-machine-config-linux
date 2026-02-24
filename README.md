@@ -44,6 +44,7 @@ pwsh -File scripts/setup-authoring-env.ps1
 │   ├── build-package.ps1            # Compile MOF and create .zip package
 │   ├── test-package.ps1             # Test compliance locally
 │   └── publish-and-assign.ps1       # Publish to Azure Storage + create policy
+├── .gitignore
 └── docs/
     └── authoring-guide.md           # Detailed walkthrough
 ```
