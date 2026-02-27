@@ -96,3 +96,42 @@ Azure **Guest Configuration** was renamed to **Azure Machine Configuration** as 
 ## License
 
 MIT
+
+## Docker — Ready-to-Use Authoring Environment
+
+Skip all the setup steps. The included Dockerfile builds a container with PowerShell 7, OMI, and all required modules pre-installed.
+
+### Build
+
+```bash
+docker build -t mc-authoring .
+```
+
+### Use
+
+```bash
+# Interactive shell
+docker run -it --rm mc-authoring
+
+# Compile an example
+docker run --rm mc-authoring pwsh -File examples/LinuxFileConfig.ps1
+
+# Mount your own configs
+docker run -it --rm -v $(pwd)/my-configs:/workspace/configs mc-authoring
+```
+
+### What's Included
+
+| Component | Version |
+|-----------|---------|
+| Ubuntu | 22.04 |
+| PowerShell | 7.5.x |
+| OMI | 1.9.1 (provides libmi.so) |
+| GuestConfiguration | 4.11.0 |
+| PSDesiredStateConfiguration | 3.0.0-beta1 |
+| nxtools | 1.6.0 |
+| Az.Accounts | latest |
+| Az.Storage | latest |
+| Az.Resources | latest |
+
+> **Note:** OMI and the DSC BaseRegistration schemas are pre-configured — the `Configuration` keyword works out of the box, which is the tricky part of setting up Linux authoring manually.
