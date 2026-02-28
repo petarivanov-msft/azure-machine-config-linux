@@ -17,19 +17,24 @@ Configuration LinuxFileConfig {
     Import-DscResource -ModuleName 'nxtools'
 
     Node localhost {
-        nxFile ComplianceMarker {
-            Ensure          = 'Present'
-            DestinationPath = '/etc/machine-config/compliance-marker.txt'
-            Contents        = 'Managed by Azure Machine Configuration'
-            Mode            = '0644'
-            Type            = 'File'
-        }
-
         nxFile ComplianceDir {
             Ensure          = 'Present'
             DestinationPath = '/etc/machine-config'
             Type            = 'Directory'
             Mode            = '0755'
+            Owner           = 'root'
+            Group           = 'root'
+        }
+
+        nxFile ComplianceMarker {
+            Ensure          = 'Present'
+            DestinationPath = '/etc/machine-config/compliance-marker.txt'
+            Contents        = 'Managed by Azure Machine Configuration'
+            Mode            = '0644'
+            Owner           = 'root'
+            Group           = 'root'
+            Type            = 'File'
+            DependsOn       = '[nxFile]ComplianceDir'
         }
     }
 }
