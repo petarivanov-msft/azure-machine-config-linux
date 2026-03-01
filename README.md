@@ -99,6 +99,17 @@ MIT
 
 ## Docker — Ready-to-Use Authoring Environment
 
+[![Docker Image](https://img.shields.io/docker/v/petariv/azure-machine-config-linux?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/petariv/azure-machine-config-linux)
+
+The fastest way to get started — pull the pre-built image from Docker Hub:
+
+```bash
+docker pull petariv/azure-machine-config-linux
+docker run -it --rm petariv/azure-machine-config-linux
+```
+
+Or build locally:
+
 Skip all the setup steps. The included Dockerfile builds a container with PowerShell 7, OMI, and all required modules pre-installed.
 
 ### Build
