@@ -1,6 +1,9 @@
-# Azure Machine Configuration — Linux Authoring Environment
+# Azure Machine Configuration — Authoring Environment
 
-A practical guide and toolkit for authoring custom **Azure Machine Configuration** (formerly Guest Configuration) policies for Linux VMs. Includes environment setup, example DSC configurations, and end-to-end scripts to package, test, and publish custom policies.
+[![Test Configs](https://github.com/petarivanov-msft/azure-machine-config-linux/actions/workflows/test-configs.yml/badge.svg)](https://github.com/petarivanov-msft/azure-machine-config-linux/actions/workflows/test-configs.yml)
+[![Docker Image](https://img.shields.io/docker/v/petariv/azure-machine-config-linux?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/petariv/azure-machine-config-linux)
+
+A practical toolkit for authoring custom **Azure Machine Configuration** (formerly Guest Configuration) policies for **Linux and Windows** VMs. Includes environment setup, example DSC configurations, CI/CD pipelines, and end-to-end scripts to package, test, and publish custom policies.
 
 ## Overview
 
@@ -146,3 +149,57 @@ docker run -it --rm -v $(pwd)/my-configs:/workspace/configs mc-authoring
 | Az.Resources | latest |
 
 > **Note:** OMI and the DSC BaseRegistration schemas are pre-configured — the `Configuration` keyword works out of the box, which is the tricky part of setting up Linux authoring manually.
+
+## Windows Examples
+
+| Example | Description |
+|---------|-------------|
+| `WindowsSecurityBaseline` | Registry hardening: disable SMBv1, require NLA for RDP, disable autorun, audit logon events |
+| `WindowsServerHardening` | Service management: firewall, Print Spooler (PrintNightmare), Windows Update, Remote Registry |
+| `WindowsFileCompliance` | File/directory compliance marker — mirrors LinuxFileConfig for cross-platform comparison |
+
+## CI/CD Pipeline
+
+Every push to `main` automatically runs a **matrix build** across Linux and Windows:
+
+```
+┌─────────────────────────────────────────────────┐
+│               GitHub Actions                     │
+│                                                  │
+│  ┌──────────────┐       ┌──────────────────┐    │
+│  │ Linux Job     │       │ Windows Job       │    │
+│  │ (container:   │       │ (windows-latest)  │    │
+│  │  Docker image)│       │                   │    │
+│  │              │       │                   │    │
+│  │ 1. Compile   │       │ 1. Install modules│    │
+│  │ 2. Package   │       │ 2. Compile        │    │
+│  │ 3. Audit     │       │ 3. Package        │    │
+│  │ 4. Remediate │       │ 4. Audit          │    │
+│  │ 5. Re-audit  │       │ 5. Remediate      │    │
+│  │    ✓ Pass    │       │ 6. Re-audit       │    │
+│  └──────────────┘       │    ✓ Pass         │    │
+│                         └──────────────────┘    │
+└─────────────────────────────────────────────────┘
+```
+
+Both jobs test the **full lifecycle**: compile → package → audit (non-compliant) → remediate → audit (compliant).
+
+### Optional: Deploy to Azure
+
+A separate **manual workflow** (`Deploy to Azure`) can publish packages to Azure Storage and assign them as policies. To use it:
+
+1. **Create a service principal:**
+   ```bash
+   az ad sp create-for-rbac --name "mc-github-deploy" \
+     --role "Resource Policy Contributor" \
+     --scopes /subscriptions/<subscription-id> \
+     --sdk-auth
+   ```
+
+2. **Add the JSON output as a GitHub secret** named `AZURE_CREDENTIALS`
+
+3. **Create a storage account** for package hosting (update `STORAGE_ACCOUNT` in the workflow)
+
+4. **Trigger the workflow** from the Actions tab — pick your config, mode, and target resource group
+
+The pipeline will compile, package, upload to blob storage, create the policy definition, and assign it.
