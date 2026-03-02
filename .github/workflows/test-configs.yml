@@ -1,0 +1,191 @@
+name: Test Machine Configuration Packages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ──────────────────────────────────────────
+  # Linux: compile, package, audit, remediate
+  # ──────────────────────────────────────────
+  test-linux:
+    name: "Linux (Ubuntu 22.04)"
+    runs-on: ubuntu-latest
+    container:
+      image: petariv/azure-machine-config-linux:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile all Linux examples
+        shell: pwsh
+        run: |
+          $examples = @(
+            'examples/LinuxFileConfig.ps1',
+            'examples/LinuxSecurityBaseline.ps1',
+            'examples/LinuxServiceMonitor.ps1'
+          )
+          foreach ($ex in $examples) {
+            Write-Host "Compiling $ex..." -ForegroundColor Cyan
+            . $ex
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($ex)
+            if (Test-Path "./$name/localhost.mof") {
+              Write-Host "  ✓ $name compiled" -ForegroundColor Green
+            } else {
+              Write-Error "  ✗ $name failed to compile"
+              exit 1
+            }
+          }
+
+      - name: Package LinuxFileConfig
+        shell: pwsh
+        run: |
+          Rename-Item './LinuxFileConfig/localhost.mof' 'LinuxFileConfig.mof' -Force
+          $pkg = New-GuestConfigurationPackage `
+            -Name LinuxFileConfig `
+            -Configuration './LinuxFileConfig/LinuxFileConfig.mof' `
+            -Path './output' `
+            -Type AuditAndSet `
+            -Force
+          if (-not (Test-Path $pkg.Path)) {
+            Write-Error "Package creation failed"
+            exit 1
+          }
+          $size = [math]::Round((Get-Item $pkg.Path).Length / 1KB, 1)
+          Write-Host "✓ Package created ($size KB)" -ForegroundColor Green
+
+      - name: Audit (expect non-compliant)
+        shell: pwsh
+        run: |
+          $result = Get-GuestConfigurationPackageComplianceStatus `
+            -Path './output/LinuxFileConfig/LinuxFileConfig.zip'
+          Write-Host "Compliance: $($result.complianceStatus)"
+          if ($result.complianceStatus -eq $true) {
+            Write-Error "Expected non-compliant before remediation"
+            exit 1
+          }
+          Write-Host "✓ Correctly reports non-compliant" -ForegroundColor Green
+
+      - name: Remediate
+        shell: pwsh
+        run: |
+          Start-GuestConfigurationPackageRemediation `
+            -Path './output/LinuxFileConfig/LinuxFileConfig.zip'
+          Write-Host "✓ Remediation applied" -ForegroundColor Green
+
+      - name: Audit (expect compliant)
+        shell: pwsh
+        run: |
+          $result = Get-GuestConfigurationPackageComplianceStatus `
+            -Path './output/LinuxFileConfig/LinuxFileConfig.zip'
+          Write-Host "Compliance: $($result.complianceStatus)"
+          if ($result.complianceStatus -ne $true) {
+            Write-Error "Expected compliant after remediation"
+            exit 1
+          }
+          Write-Host "✓ Compliant after remediation" -ForegroundColor Green
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-packages
+          path: output/
+          retention-days: 7
+
+  # ──────────────────────────────────────────
+  # Windows: compile, package, audit, remediate
+  # ──────────────────────────────────────────
+  test-windows:
+    name: "Windows (Server 2022)"
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install modules
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name GuestConfiguration -Force -Scope CurrentUser
+          Install-Module -Name PSDesiredStateConfiguration -Force -AllowClobber -Scope CurrentUser
+          Write-Host "✓ Modules installed" -ForegroundColor Green
+
+      - name: Compile all Windows examples
+        shell: pwsh
+        run: |
+          $examples = @(
+            'windows-examples/WindowsSecurityBaseline.ps1',
+            'windows-examples/WindowsServerHardening.ps1',
+            'windows-examples/WindowsFileCompliance.ps1'
+          )
+          foreach ($ex in $examples) {
+            Write-Host "Compiling $ex..." -ForegroundColor Cyan
+            . $ex
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($ex)
+            if (Test-Path "./$name/localhost.mof") {
+              Write-Host "  ✓ $name compiled" -ForegroundColor Green
+            } else {
+              Write-Error "  ✗ $name failed to compile"
+              exit 1
+            }
+          }
+
+      - name: Package WindowsFileCompliance
+        shell: pwsh
+        run: |
+          Rename-Item './WindowsFileCompliance/localhost.mof' 'WindowsFileCompliance.mof' -Force
+          $pkg = New-GuestConfigurationPackage `
+            -Name WindowsFileCompliance `
+            -Configuration './WindowsFileCompliance/WindowsFileCompliance.mof' `
+            -Path './output' `
+            -Type AuditAndSet `
+            -Force
+          if (-not (Test-Path $pkg.Path)) {
+            Write-Error "Package creation failed"
+            exit 1
+          }
+          $size = [math]::Round((Get-Item $pkg.Path).Length / 1KB, 1)
+          Write-Host "✓ Package created ($size KB)" -ForegroundColor Green
+
+      - name: Audit (expect non-compliant)
+        shell: pwsh
+        run: |
+          $result = Get-GuestConfigurationPackageComplianceStatus `
+            -Path './output/WindowsFileCompliance/WindowsFileCompliance.zip'
+          Write-Host "Compliance: $($result.complianceStatus)"
+          if ($result.complianceStatus -eq $true) {
+            Write-Error "Expected non-compliant before remediation"
+            exit 1
+          }
+          Write-Host "✓ Correctly reports non-compliant" -ForegroundColor Green
+
+      - name: Remediate
+        shell: pwsh
+        run: |
+          Start-GuestConfigurationPackageRemediation `
+            -Path './output/WindowsFileCompliance/WindowsFileCompliance.zip'
+          Write-Host "✓ Remediation applied" -ForegroundColor Green
+
+      - name: Audit (expect compliant)
+        shell: pwsh
+        run: |
+          $result = Get-GuestConfigurationPackageComplianceStatus `
+            -Path './output/WindowsFileCompliance/WindowsFileCompliance.zip'
+          Write-Host "Compliance: $($result.complianceStatus)"
+          if ($result.complianceStatus -ne $true) {
+            Write-Error "Expected compliant after remediation"
+            exit 1
+          }
+          Write-Host "✓ Compliant after remediation" -ForegroundColor Green
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-packages
+          path: output/
+          retention-days: 7
