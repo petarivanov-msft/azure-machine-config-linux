@@ -1,11 +1,10 @@
 name: "Deploy to Azure (Optional)"
 
-# Manual trigger only — requires Azure credentials
 on:
   workflow_dispatch:
     inputs:
       config_name:
-        description: 'Configuration name (e.g. LinuxFileConfig, WindowsSecurityBaseline)'
+        description: 'Configuration name'
         required: true
         default: 'LinuxFileConfig'
         type: choice
@@ -13,9 +12,6 @@ on:
           - LinuxFileConfig
           - LinuxSecurityBaseline
           - LinuxServiceMonitor
-          - WindowsSecurityBaseline
-          - WindowsServerHardening
-          - WindowsFileCompliance
       policy_mode:
         description: 'Policy mode'
         required: true
@@ -32,7 +28,7 @@ on:
         required: false
 
 env:
-  STORAGE_ACCOUNT: mcpackages  # Change to your storage account
+  STORAGE_ACCOUNT: mcpackages
   CONTAINER_NAME: guestconfiguration
 
 jobs:
@@ -45,126 +41,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine platform and example path
-        id: config
-        shell: pwsh
-        run: |
-          $name = "${{ inputs.config_name }}"
-          $linuxConfigs = @('LinuxFileConfig', 'LinuxSecurityBaseline', 'LinuxServiceMonitor')
-          if ($name -in $linuxConfigs) {
-            "example_path=examples/$name.ps1" >> $env:GITHUB_OUTPUT
-            "platform=Linux" >> $env:GITHUB_OUTPUT
-          } else {
-            "example_path=windows-examples/$name.ps1" >> $env:GITHUB_OUTPUT
-            "platform=Windows" >> $env:GITHUB_OUTPUT
-          }
-
       - name: Compile configuration
         shell: pwsh
         run: |
-          Write-Host "Compiling ${{ inputs.config_name }}..."
-          . "${{ steps.config.outputs.example_path }}"
+          . "examples/${{ inputs.config_name }}.ps1"
           Rename-Item './${{ inputs.config_name }}/localhost.mof' '${{ inputs.config_name }}.mof' -Force
 
       - name: Build package
         shell: pwsh
         run: |
-          $pkg = New-GuestConfigurationPackage `
-            -Name '${{ inputs.config_name }}' `
+          $pkg = New-GuestConfigurationPackage -Name '${{ inputs.config_name }}' `
             -Configuration './${{ inputs.config_name }}/${{ inputs.config_name }}.mof' `
-            -Path './output' `
-            -Type '${{ inputs.policy_mode }}' `
-            -Force
-          Write-Host "Package: $($pkg.Path)"
+            -Path './output' -Type '${{ inputs.policy_mode }}' -Force
 
       - name: Login to Azure
         shell: pwsh
         run: |
-          # Uses GitHub secret: AZURE_CREDENTIALS (service principal JSON)
           $creds = '${{ secrets.AZURE_CREDENTIALS }}' | ConvertFrom-Json
           $securePassword = ConvertTo-SecureString $creds.clientSecret -AsPlainText -Force
           $psCred = New-Object System.Management.Automation.PSCredential($creds.clientId, $securePassword)
           Connect-AzAccount -ServicePrincipal -Credential $psCred -Tenant $creds.tenantId
           Set-AzContext -Subscription $creds.subscriptionId
-          Write-Host "✓ Logged in to Azure" -ForegroundColor Green
 
-      - name: Publish package to Azure Storage
+      - name: Publish and assign policy
         shell: pwsh
         run: |
+          $displayName = if ('${{ inputs.assignment_name }}') { '${{ inputs.assignment_name }}' }
+                         else { 'MC: ${{ inputs.config_name }} (${{ inputs.policy_mode }})' }
+
           $storageAccount = Get-AzStorageAccount | Where-Object StorageAccountName -eq '${{ env.STORAGE_ACCOUNT }}'
           $ctx = $storageAccount.Context
-
-          # Ensure container exists
           New-AzStorageContainer -Name '${{ env.CONTAINER_NAME }}' -Context $ctx -ErrorAction SilentlyContinue
 
-          # Upload package
-          $packagePath = './output/${{ inputs.config_name }}/${{ inputs.config_name }}.zip'
-          Set-AzStorageBlobContent `
-            -File $packagePath `
-            -Container '${{ env.CONTAINER_NAME }}' `
-            -Blob '${{ inputs.config_name }}.zip' `
-            -Context $ctx `
-            -Force
+          Set-AzStorageBlobContent -File './output/${{ inputs.config_name }}/${{ inputs.config_name }}.zip' `
+            -Container '${{ env.CONTAINER_NAME }}' -Blob '${{ inputs.config_name }}.zip' -Context $ctx -Force
 
-          # Generate SAS URL (valid 3 years)
-          $expiry = (Get-Date).AddYears(3)
-          $sasUri = New-AzStorageBlobSASToken `
-            -Container '${{ env.CONTAINER_NAME }}' `
-            -Blob '${{ inputs.config_name }}.zip' `
-            -Context $ctx `
-            -Permission r `
-            -ExpiryTime $expiry `
-            -FullUri
+          $sasUri = New-AzStorageBlobSASToken -Container '${{ env.CONTAINER_NAME }}' `
+            -Blob '${{ inputs.config_name }}.zip' -Context $ctx -Permission r `
+            -ExpiryTime (Get-Date).AddYears(3) -FullUri
 
-          Write-Host "Package URL: $sasUri"
-          "PACKAGE_URI=$sasUri" >> $env:GITHUB_ENV
+          $policyDef = New-GuestConfigurationPolicy -PolicyId (New-Guid).Guid `
+            -ContentUri $sasUri -DisplayName $displayName `
+            -Description "Machine Configuration: ${{ inputs.config_name }}" `
+            -Platform Linux -Mode '${{ inputs.policy_mode }}' `
+            -Path './policies' -Version '1.0.0'
 
-      - name: Create and assign policy
-        shell: pwsh
-        run: |
-          $displayName = if ('${{ inputs.assignment_name }}') {
-            '${{ inputs.assignment_name }}'
-          } else {
-            'MC: ${{ inputs.config_name }} (${{ inputs.policy_mode }})'
-          }
-
-          # Create the policy definition
-          $policyDef = New-GuestConfigurationPolicy `
-            -PolicyId (New-Guid).Guid `
-            -ContentUri $env:PACKAGE_URI `
-            -DisplayName $displayName `
-            -Description "Machine Configuration policy for ${{ inputs.config_name }} (${{ steps.config.outputs.platform }})" `
-            -Platform ${{ steps.config.outputs.platform }} `
-            -Mode '${{ inputs.policy_mode }}' `
-            -Path './policies' `
-            -Version '1.0.0'
-
-          # Publish the policy
           $published = Publish-GuestConfigurationPolicy -Path './policies'
-          Write-Host "✓ Policy published: $($published.Name)" -ForegroundColor Green
-
-          # Assign to resource group
           $rg = Get-AzResourceGroup -Name '${{ inputs.resource_group }}'
-          New-AzPolicyAssignment `
-            -Name "${{ inputs.config_name }}-assignment" `
+          New-AzPolicyAssignment -Name "${{ inputs.config_name }}-assignment" `
             -DisplayName $displayName `
             -PolicyDefinition (Get-AzPolicyDefinition -Name $published.Name) `
             -Scope $rg.ResourceId
 
-          Write-Host "✓ Policy assigned to ${{ inputs.resource_group }}" -ForegroundColor Green
-
-      - name: Summary
-        shell: pwsh
-        run: |
-          Write-Host ""
-          Write-Host "═══════════════════════════════════════" -ForegroundColor Cyan
-          Write-Host "  Deployment Complete" -ForegroundColor Cyan
-          Write-Host "═══════════════════════════════════════" -ForegroundColor Cyan
-          Write-Host "  Config:     ${{ inputs.config_name }}"
-          Write-Host "  Platform:   ${{ steps.config.outputs.platform }}"
-          Write-Host "  Mode:       ${{ inputs.policy_mode }}"
-          Write-Host "  Target RG:  ${{ inputs.resource_group }}"
-          Write-Host ""
-          Write-Host "  Compliance results will appear in Azure Policy"
-          Write-Host "  within 15-30 minutes for existing VMs."
-          Write-Host "═══════════════════════════════════════" -ForegroundColor Cyan
+          Write-Host "✓ Policy published and assigned to ${{ inputs.resource_group }}" -ForegroundColor Green
