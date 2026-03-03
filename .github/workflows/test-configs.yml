@@ -3,14 +3,58 @@ name: Test Machine Configuration Packages
 on:
   push:
     branches: [main]
+    paths:
+      - 'examples/**'
+      - 'windows-examples/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - '.github/workflows/test-configs.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to test'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - linux
+          - windows
 
 jobs:
+  # ─── Detect which paths changed (for push events) ───
+  changes:
+    name: "Detect Changes"
+    runs-on: ubuntu-latest
+    outputs:
+      linux: ${{ steps.filter.outputs.linux }}
+      windows: ${{ steps.filter.outputs.windows }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            linux:
+              - 'examples/**'
+              - 'Dockerfile'
+              - 'scripts/**'
+            windows:
+              - 'windows-examples/**'
+            shared:
+              - '.github/workflows/test-configs.yml'
+
   # ─── Linux: full lifecycle (compile → package → audit → remediate → verify) ───
   test-linux:
     name: "Linux — Full Lifecycle"
+    needs: changes
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' && (inputs.platform == 'both' || inputs.platform == 'linux') ||
+      github.event_name == 'push' && (needs.changes.outputs.linux == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
     container:
       image: petariv/azure-machine-config-linux:latest
@@ -74,6 +118,11 @@ jobs:
   # ─── Windows: compile + package + native DSC test cycle ───
   test-windows:
     name: "Windows — Full Lifecycle"
+    needs: changes
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' && (inputs.platform == 'both' || inputs.platform == 'windows') ||
+      github.event_name == 'push' && (needs.changes.outputs.windows == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: windows-latest
 
     steps:
@@ -137,12 +186,9 @@ jobs:
       - name: "Test: Audit (expect non-compliant)"
         shell: powershell
         run: |
-          # Use native Invoke-DscResource (bypasses GuestConfiguration MI layer)
           Import-Module PSDscResources
-          $target = 'C:\ProgramData\MachineConfig\compliance-marker.txt'
-
           $test = Invoke-DscResource -Name File -ModuleName PSDscResources -Method Test -Property @{
-            DestinationPath = $target
+            DestinationPath = 'C:\ProgramData\MachineConfig\compliance-marker.txt'
             Contents        = 'Managed by Azure Machine Configuration'
             Ensure          = 'Present'
             Type            = 'File'
@@ -155,15 +201,11 @@ jobs:
         shell: powershell
         run: |
           Import-Module PSDscResources
-
-          # Create directory first
           Invoke-DscResource -Name File -ModuleName PSDscResources -Method Set -Property @{
             DestinationPath = 'C:\ProgramData\MachineConfig'
             Ensure          = 'Present'
             Type            = 'Directory'
           }
-
-          # Create compliance marker
           Invoke-DscResource -Name File -ModuleName PSDscResources -Method Set -Property @{
             DestinationPath = 'C:\ProgramData\MachineConfig\compliance-marker.txt'
             Contents        = 'Managed by Azure Machine Configuration'
