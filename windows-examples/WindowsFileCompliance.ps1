@@ -13,7 +13,7 @@
 #>
 
 Configuration WindowsFileCompliance {
-    Import-DscResource -ModuleName 'PSDesiredStateConfiguration'
+    Import-DscResource -ModuleName 'PSDscResources'
 
     Node localhost {
         # Ensure compliance directory exists

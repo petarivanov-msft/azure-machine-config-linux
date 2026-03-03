@@ -16,7 +16,7 @@
 #>
 
 Configuration WindowsSecurityBaseline {
-    Import-DscResource -ModuleName 'PSDesiredStateConfiguration'
+    Import-DscResource -ModuleName 'PSDscResources'
 
     Node localhost {
         # Disable SMBv1 (WannaCry mitigation)
