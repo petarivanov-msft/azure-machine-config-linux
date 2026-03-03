@@ -8,9 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ──────────────────────────────────────────
-  # Linux: compile, package, audit, remediate
-  # ──────────────────────────────────────────
   test-linux:
     name: "Linux (Ubuntu 22.04)"
     runs-on: ubuntu-latest
@@ -41,6 +38,7 @@ jobs:
           }
 
       - name: Package LinuxFileConfig
+        id: package
         shell: pwsh
         run: |
           Rename-Item './LinuxFileConfig/localhost.mof' 'LinuxFileConfig.mof' -Force
@@ -50,6 +48,8 @@ jobs:
             -Path './output' `
             -Type AuditAndSet `
             -Force
+          Write-Host "Package at: $($pkg.Path)"
+          "PACKAGE_PATH=$($pkg.Path)" >> $env:GITHUB_OUTPUT
           if (-not (Test-Path $pkg.Path)) {
             Write-Error "Package creation failed"
             exit 1
@@ -60,8 +60,8 @@ jobs:
       - name: Audit (expect non-compliant)
         shell: pwsh
         run: |
-          $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path './output/LinuxFileConfig/LinuxFileConfig.zip'
+          $pkgPath = '${{ steps.package.outputs.PACKAGE_PATH }}'
+          $result = Get-GuestConfigurationPackageComplianceStatus -Path $pkgPath
           Write-Host "Compliance: $($result.complianceStatus)"
           if ($result.complianceStatus -eq $true) {
             Write-Error "Expected non-compliant before remediation"
@@ -73,14 +73,14 @@ jobs:
         shell: pwsh
         run: |
           Start-GuestConfigurationPackageRemediation `
-            -Path './output/LinuxFileConfig/LinuxFileConfig.zip'
+            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "✓ Remediation applied" -ForegroundColor Green
 
       - name: Audit (expect compliant)
         shell: pwsh
         run: |
           $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path './output/LinuxFileConfig/LinuxFileConfig.zip'
+            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
           if ($result.complianceStatus -ne $true) {
             Write-Error "Expected compliant after remediation"
@@ -96,9 +96,6 @@ jobs:
           path: output/
           retention-days: 7
 
-  # ──────────────────────────────────────────
-  # Windows: compile, package, audit, remediate
-  # ──────────────────────────────────────────
   test-windows:
     name: "Windows (Server 2022)"
     runs-on: windows-latest
@@ -111,7 +108,7 @@ jobs:
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name GuestConfiguration -Force -Scope CurrentUser
-          Install-Module -Name PSDesiredStateConfiguration -Force -AllowClobber -Scope CurrentUser
+          Install-Module -Name PSDscResources -Force -Scope CurrentUser
           Write-Host "✓ Modules installed" -ForegroundColor Green
 
       - name: Compile all Windows examples
@@ -135,6 +132,7 @@ jobs:
           }
 
       - name: Package WindowsFileCompliance
+        id: package
         shell: pwsh
         run: |
           Rename-Item './WindowsFileCompliance/localhost.mof' 'WindowsFileCompliance.mof' -Force
@@ -144,6 +142,8 @@ jobs:
             -Path './output' `
             -Type AuditAndSet `
             -Force
+          Write-Host "Package at: $($pkg.Path)"
+          "PACKAGE_PATH=$($pkg.Path)" >> $env:GITHUB_OUTPUT
           if (-not (Test-Path $pkg.Path)) {
             Write-Error "Package creation failed"
             exit 1
@@ -155,7 +155,7 @@ jobs:
         shell: pwsh
         run: |
           $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path './output/WindowsFileCompliance/WindowsFileCompliance.zip'
+            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
           if ($result.complianceStatus -eq $true) {
             Write-Error "Expected non-compliant before remediation"
@@ -167,14 +167,14 @@ jobs:
         shell: pwsh
         run: |
           Start-GuestConfigurationPackageRemediation `
-            -Path './output/WindowsFileCompliance/WindowsFileCompliance.zip'
+            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "✓ Remediation applied" -ForegroundColor Green
 
       - name: Audit (expect compliant)
         shell: pwsh
         run: |
           $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path './output/WindowsFileCompliance/WindowsFileCompliance.zip'
+            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
           if ($result.complianceStatus -ne $true) {
             Write-Error "Expected compliant after remediation"
