@@ -16,7 +16,7 @@
 #>
 
 Configuration WindowsServerHardening {
-    Import-DscResource -ModuleName 'PSDscResources'
+    Import-DscResource -ModuleName 'PSDesiredStateConfiguration'
 
     Node localhost {
         # Ensure Windows Firewall service is running

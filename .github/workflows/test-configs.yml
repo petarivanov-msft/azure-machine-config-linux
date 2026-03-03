@@ -48,44 +48,31 @@ jobs:
             -Path './output' `
             -Type AuditAndSet `
             -Force
-          Write-Host "Package at: $($pkg.Path)"
           "PACKAGE_PATH=$($pkg.Path)" >> $env:GITHUB_OUTPUT
-          if (-not (Test-Path $pkg.Path)) {
-            Write-Error "Package creation failed"
-            exit 1
-          }
+          if (-not (Test-Path $pkg.Path)) { exit 1 }
           $size = [math]::Round((Get-Item $pkg.Path).Length / 1KB, 1)
           Write-Host "✓ Package created ($size KB)" -ForegroundColor Green
 
       - name: Audit (expect non-compliant)
         shell: pwsh
         run: |
-          $pkgPath = '${{ steps.package.outputs.PACKAGE_PATH }}'
-          $result = Get-GuestConfigurationPackageComplianceStatus -Path $pkgPath
+          $result = Get-GuestConfigurationPackageComplianceStatus -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
-          if ($result.complianceStatus -eq $true) {
-            Write-Error "Expected non-compliant before remediation"
-            exit 1
-          }
+          if ($result.complianceStatus -eq $true) { exit 1 }
           Write-Host "✓ Correctly reports non-compliant" -ForegroundColor Green
 
       - name: Remediate
         shell: pwsh
         run: |
-          Start-GuestConfigurationPackageRemediation `
-            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
+          Start-GuestConfigurationPackageRemediation -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "✓ Remediation applied" -ForegroundColor Green
 
       - name: Audit (expect compliant)
         shell: pwsh
         run: |
-          $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
+          $result = Get-GuestConfigurationPackageComplianceStatus -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
-          if ($result.complianceStatus -ne $true) {
-            Write-Error "Expected compliant after remediation"
-            exit 1
-          }
+          if ($result.complianceStatus -ne $true) { exit 1 }
           Write-Host "✓ Compliant after remediation" -ForegroundColor Green
 
       - name: Upload packages
@@ -111,22 +98,23 @@ jobs:
           Install-Module -Name PSDscResources -Force -Scope CurrentUser
           Write-Host "✓ Modules installed" -ForegroundColor Green
 
-      - name: Compile all Windows examples
-        shell: pwsh
+      - name: Compile Windows examples (WinPS 5.1)
+        shell: powershell
         run: |
+          # Use Windows PowerShell 5.1 for DSC compilation (native DSC v2 support)
           $examples = @(
-            'windows-examples/WindowsSecurityBaseline.ps1',
-            'windows-examples/WindowsServerHardening.ps1',
-            'windows-examples/WindowsFileCompliance.ps1'
+            'windows-examples\WindowsSecurityBaseline.ps1',
+            'windows-examples\WindowsServerHardening.ps1',
+            'windows-examples\WindowsFileCompliance.ps1'
           )
           foreach ($ex in $examples) {
             Write-Host "Compiling $ex..." -ForegroundColor Cyan
             . $ex
             $name = [System.IO.Path]::GetFileNameWithoutExtension($ex)
-            if (Test-Path "./$name/localhost.mof") {
-              Write-Host "  ✓ $name compiled" -ForegroundColor Green
+            if (Test-Path ".\$name\localhost.mof") {
+              Write-Host "  OK: $name compiled" -ForegroundColor Green
             } else {
-              Write-Error "  ✗ $name failed to compile"
+              Write-Error "FAIL: $name"
               exit 1
             }
           }
@@ -142,44 +130,31 @@ jobs:
             -Path './output' `
             -Type AuditAndSet `
             -Force
-          Write-Host "Package at: $($pkg.Path)"
           "PACKAGE_PATH=$($pkg.Path)" >> $env:GITHUB_OUTPUT
-          if (-not (Test-Path $pkg.Path)) {
-            Write-Error "Package creation failed"
-            exit 1
-          }
+          if (-not (Test-Path $pkg.Path)) { exit 1 }
           $size = [math]::Round((Get-Item $pkg.Path).Length / 1KB, 1)
           Write-Host "✓ Package created ($size KB)" -ForegroundColor Green
 
       - name: Audit (expect non-compliant)
         shell: pwsh
         run: |
-          $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
+          $result = Get-GuestConfigurationPackageComplianceStatus -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
-          if ($result.complianceStatus -eq $true) {
-            Write-Error "Expected non-compliant before remediation"
-            exit 1
-          }
+          if ($result.complianceStatus -eq $true) { exit 1 }
           Write-Host "✓ Correctly reports non-compliant" -ForegroundColor Green
 
       - name: Remediate
         shell: pwsh
         run: |
-          Start-GuestConfigurationPackageRemediation `
-            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
+          Start-GuestConfigurationPackageRemediation -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "✓ Remediation applied" -ForegroundColor Green
 
       - name: Audit (expect compliant)
         shell: pwsh
         run: |
-          $result = Get-GuestConfigurationPackageComplianceStatus `
-            -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
+          $result = Get-GuestConfigurationPackageComplianceStatus -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
           Write-Host "Compliance: $($result.complianceStatus)"
-          if ($result.complianceStatus -ne $true) {
-            Write-Error "Expected compliant after remediation"
-            exit 1
-          }
+          if ($result.complianceStatus -ne $true) { exit 1 }
           Write-Host "✓ Compliant after remediation" -ForegroundColor Green
 
       - name: Upload packages
