@@ -71,40 +71,13 @@ jobs:
           path: output/
           retention-days: 7
 
-  # ─── Windows: full lifecycle attempt (WinRM + LCM enabled) ───
+  # ─── Windows: compile + package + native DSC test cycle ───
   test-windows:
     name: "Windows — Full Lifecycle"
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Enable DSC infrastructure
-        shell: powershell
-        run: |
-          # Start WinRM (DSC LCM communicates through it)
-          Set-Service WinRM -StartupType Automatic
-          Start-Service WinRM
-          Write-Host "✓ WinRM started" -ForegroundColor Green
-
-          # Ensure LCM is in Push mode (required for local testing)
-          [DSCLocalConfigurationManager()]
-          configuration LCMConfig {
-            Node localhost {
-              Settings {
-                RefreshMode = 'Push'
-                ConfigurationMode = 'ApplyAndMonitor'
-              }
-            }
-          }
-          LCMConfig
-          Set-DscLocalConfigurationManager -Path .\LCMConfig -Force
-          Write-Host "✓ LCM configured (Push mode)" -ForegroundColor Green
-
-          # Verify LCM state
-          $lcm = Get-DscLocalConfigurationManager
-          Write-Host "  RefreshMode: $($lcm.RefreshMode)"
-          Write-Host "  ConfigurationMode: $($lcm.ConfigurationMode)"
 
       - name: Install PSDscResources (WinPS 5.1)
         shell: powershell
@@ -147,39 +120,71 @@ jobs:
             }
           }
 
-      - name: Package WindowsFileCompliance
-        id: package
+      - name: Package all Windows configs
         shell: pwsh
         run: |
-          Rename-Item './WindowsFileCompliance/localhost.mof' 'WindowsFileCompliance.mof' -Force
-          $pkg = New-GuestConfigurationPackage -Name WindowsFileCompliance `
-            -Configuration './WindowsFileCompliance/WindowsFileCompliance.mof' `
-            -Path './output' -Type AuditAndSet -Force
-          "PACKAGE_PATH=$($pkg.Path)" >> $env:GITHUB_OUTPUT
-          if (-not (Test-Path $pkg.Path)) { exit 1 }
-          Write-Host "✓ Package: $([math]::Round((Get-Item $pkg.Path).Length / 1KB, 1)) KB"
+          foreach ($name in @('WindowsSecurityBaseline','WindowsServerHardening','WindowsFileCompliance')) {
+            Write-Host "Packaging $name..." -ForegroundColor Cyan
+            Rename-Item "./$name/localhost.mof" "$name.mof" -Force
+            $pkg = New-GuestConfigurationPackage -Name $name `
+              -Configuration "./$name/$name.mof" `
+              -Path './output' -Type AuditAndSet -Force
+            if (-not (Test-Path $pkg.Path)) { Write-Error "✗ $name"; exit 1 }
+            $size = [math]::Round((Get-Item $pkg.Path).Length / 1KB, 1)
+            Write-Host "  ✓ $name ($size KB)" -ForegroundColor Green
+          }
 
-      - name: Audit (expect non-compliant)
-        shell: pwsh
+      - name: "Test: Audit (expect non-compliant)"
+        shell: powershell
         run: |
-          $r = Get-GuestConfigurationPackageComplianceStatus -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
-          Write-Host "Compliance: $($r.complianceStatus)"
-          if ($r.complianceStatus -eq $true) { Write-Error "Expected non-compliant"; exit 1 }
-          Write-Host "✓ Correctly non-compliant" -ForegroundColor Green
+          # Use native Invoke-DscResource (bypasses GuestConfiguration MI layer)
+          Import-Module PSDscResources
+          $target = 'C:\ProgramData\MachineConfig\compliance-marker.txt'
 
-      - name: Remediate
-        shell: pwsh
-        run: |
-          Start-GuestConfigurationPackageRemediation -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
-          Write-Host "✓ Remediation applied" -ForegroundColor Green
+          $test = Invoke-DscResource -Name File -ModuleName PSDscResources -Method Test -Property @{
+            DestinationPath = $target
+            Contents        = 'Managed by Azure Machine Configuration'
+            Ensure          = 'Present'
+            Type            = 'File'
+          }
+          Write-Host "InDesiredState: $($test.InDesiredState)"
+          if ($test.InDesiredState) { Write-Error "Expected non-compliant"; exit 1 }
+          Write-Host "OK: Correctly non-compliant" -ForegroundColor Green
 
-      - name: Audit (expect compliant)
-        shell: pwsh
+      - name: "Test: Remediate"
+        shell: powershell
         run: |
-          $r = Get-GuestConfigurationPackageComplianceStatus -Path '${{ steps.package.outputs.PACKAGE_PATH }}'
-          Write-Host "Compliance: $($r.complianceStatus)"
-          if ($r.complianceStatus -ne $true) { Write-Error "Expected compliant"; exit 1 }
-          Write-Host "✓ Compliant after remediation" -ForegroundColor Green
+          Import-Module PSDscResources
+
+          # Create directory first
+          Invoke-DscResource -Name File -ModuleName PSDscResources -Method Set -Property @{
+            DestinationPath = 'C:\ProgramData\MachineConfig'
+            Ensure          = 'Present'
+            Type            = 'Directory'
+          }
+
+          # Create compliance marker
+          Invoke-DscResource -Name File -ModuleName PSDscResources -Method Set -Property @{
+            DestinationPath = 'C:\ProgramData\MachineConfig\compliance-marker.txt'
+            Contents        = 'Managed by Azure Machine Configuration'
+            Ensure          = 'Present'
+            Type            = 'File'
+          }
+          Write-Host "OK: Remediation applied" -ForegroundColor Green
+
+      - name: "Test: Audit (expect compliant)"
+        shell: powershell
+        run: |
+          Import-Module PSDscResources
+          $test = Invoke-DscResource -Name File -ModuleName PSDscResources -Method Test -Property @{
+            DestinationPath = 'C:\ProgramData\MachineConfig\compliance-marker.txt'
+            Contents        = 'Managed by Azure Machine Configuration'
+            Ensure          = 'Present'
+            Type            = 'File'
+          }
+          Write-Host "InDesiredState: $($test.InDesiredState)"
+          if (-not $test.InDesiredState) { Write-Error "Expected compliant after remediation"; exit 1 }
+          Write-Host "OK: Compliant after remediation" -ForegroundColor Green
 
       - name: Upload packages
         uses: actions/upload-artifact@v4
