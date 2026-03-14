@@ -6,7 +6,6 @@ on:
     paths:
       - 'examples/**'
       - 'scripts/**'
-      - 'Dockerfile'
       - '.github/workflows/test-configs.yml'
   pull_request:
     branches: [main]

@@ -6,6 +6,8 @@
 A practical toolkit for authoring custom **Azure Machine Configuration** (formerly Guest Configuration) policies for **Linux** VMs. Includes a Docker-based authoring environment, example DSC configurations, CI/CD pipeline with full lifecycle testing, and scripts to package, test, and publish custom policies.
 
 > **Looking for Windows?** See [azure-machine-config-windows](https://github.com/petarivanov-msft/azure-machine-config-windows) — native PowerShell setup, no Docker needed.
+>
+> **Container image:** See [azure-machine-config-container](https://github.com/petarivanov-msft/azure-machine-config-container) for the Dockerfile and container docs.
 
 ## Overview
 
@@ -106,51 +108,16 @@ MIT
 
 [![Docker Image](https://img.shields.io/docker/v/petariv/azure-machine-config-linux?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/petariv/azure-machine-config-linux)
 
-The fastest way to get started — pull the pre-built image from Docker Hub:
+A pre-built Docker image is available on Docker Hub — PowerShell 7, OMI, and all required modules pre-installed:
 
 ```bash
 docker pull petariv/azure-machine-config-linux
 docker run -it --rm petariv/azure-machine-config-linux
 ```
 
-Or build locally:
+The Dockerfile and full container documentation (including a guide for setting up the authoring environment without Docker) live in the dedicated container repo:
 
-Skip all the setup steps. The included Dockerfile builds a container with PowerShell 7, OMI, and all required modules pre-installed.
-
-### Build
-
-```bash
-docker build -t mc-authoring .
-```
-
-### Use
-
-```bash
-# Interactive shell
-docker run -it --rm mc-authoring
-
-# Compile an example
-docker run --rm mc-authoring pwsh -File examples/LinuxFileConfig.ps1
-
-# Mount your own configs
-docker run -it --rm -v $(pwd)/my-configs:/workspace/configs mc-authoring
-```
-
-### What's Included
-
-| Component | Version |
-|-----------|---------|
-| Ubuntu | 22.04 |
-| PowerShell | 7.5.x |
-| OMI | 1.9.1 (provides libmi.so) |
-| GuestConfiguration | 4.11.0 |
-| PSDesiredStateConfiguration | 3.0.0-beta1 |
-| nxtools | 1.6.0 |
-| Az.Accounts | latest |
-| Az.Storage | latest |
-| Az.Resources | latest |
-
-> **Note:** OMI and the DSC BaseRegistration schemas are pre-configured — the `Configuration` keyword works out of the box, which is the tricky part of setting up Linux authoring manually.
+**[azure-machine-config-container](https://github.com/petarivanov-msft/azure-machine-config-container)**
 
 ## CI/CD Pipeline
 
