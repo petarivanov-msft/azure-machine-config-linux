@@ -3,7 +3,7 @@
 [![Test Configs](https://github.com/petarivanov-msft/azure-machine-config-linux/actions/workflows/test-configs.yml/badge.svg)](https://github.com/petarivanov-msft/azure-machine-config-linux/actions/workflows/test-configs.yml)
 [![Docker Image](https://img.shields.io/docker/v/petariv/azure-machine-config-linux?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/petariv/azure-machine-config-linux)
 
-A practical toolkit for authoring custom **Azure Machine Configuration** (formerly Guest Configuration) policies for **Linux** VMs. Includes a Docker-based authoring environment, example DSC configurations, CI/CD pipeline with full lifecycle testing, and scripts to package, test, and publish custom policies.
+A practical toolkit for authoring custom **Azure Machine Configuration** (formerly Guest Configuration) policies for **Linux** VMs. Includes example DSC configurations, a CI/CD pipeline with full lifecycle testing, and scripts to package, test, and publish custom policies. Uses a pre-built Docker container for the authoring environment — see [azure-machine-config-container](https://github.com/petarivanov-msft/azure-machine-config-container).
 
 > **Looking for Windows?** See [azure-machine-config-windows](https://github.com/petarivanov-msft/azure-machine-config-windows) — native PowerShell setup, no Docker needed.
 >
